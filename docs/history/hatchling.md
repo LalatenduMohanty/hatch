@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## Unreleased
 
+***Changed:***
+
+- Removed the `pluggy` dependency; plugin discovery now uses a built-in convention-based hook system (`hatch_register_*` naming convention)
+
+***Fixed:***
+
+- Added missing `hatch_register_version_scheme` hook specification
+
 ## [1.29.0](https://github.com/pypa/hatch/releases/tag/hatchling-v1.29.0) - 2026-02-21 ## {: #hatchling-v1.29.0 }
 
 ***Fixed:***

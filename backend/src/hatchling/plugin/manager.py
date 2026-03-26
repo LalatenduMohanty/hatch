@@ -1,23 +1,60 @@
 from __future__ import annotations
 
+import importlib.metadata
+import inspect
+from functools import partial
 from typing import TYPE_CHECKING, TypeVar
-
-import pluggy
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 
+class HookRegistry:
+    def __init__(self) -> None:
+        self._hooks: dict[str, list[Callable]] = {}
+        self._registered: list[object] = []
+
+    def add_hookspecs(self, module: object) -> None:
+        """No-op kept for API compatibility.
+
+        Hooks are discovered by naming convention (hatch_register_*)
+        rather than explicit specification registration.
+        """
+
+    def register(self, module_or_obj: object) -> None:
+        if any(obj is module_or_obj for obj in self._registered):
+            return
+        self._registered.append(module_or_obj)
+
+        def predicate(member):
+            return inspect.isfunction(member) or inspect.ismethod(member)
+
+        for name, obj in inspect.getmembers(module_or_obj, predicate):
+            if name.startswith("hatch_register_"):
+                self._hooks.setdefault(name, []).append(obj)
+
+    def register_hook(self, name: str, func: Callable) -> None:
+        hooks = self._hooks.setdefault(name, [])
+        if func not in hooks:
+            hooks.append(func)
+
+    def call_hook(self, name: str) -> list:
+        results = []
+        for func in self._hooks.get(name, []):
+            result = func()
+            if result is not None:
+                results.append(result)
+        return results
+
+
 class PluginManager:
     def __init__(self) -> None:
-        self.manager = pluggy.PluginManager("hatch")
+        self.manager = HookRegistry()
         self.third_party_plugins = ThirdPartyPlugins(self.manager)
         self.initialized = False
 
     def initialize(self) -> None:
-        from hatchling.plugin import specs
-
-        self.manager.add_hookspecs(specs)
+        """Override point for subclasses (e.g. hatch frontend PluginManager)."""
 
     def __getattr__(self, name: str) -> ClassRegister:
         if not self.initialized:
@@ -25,11 +62,14 @@ class PluginManager:
             self.initialized = True
 
         hook_name = f"hatch_register_{name}"
-        hook = getattr(self, hook_name, None)
-        if hook:
-            hook()
+        # Cannot use getattr() here: if hook_name doesn't exist as a method,
+        # getattr() would call __getattr__ again, causing infinite recursion.
+        for cls in type(self).__mro__:
+            if hook_name in cls.__dict__:
+                cls.__dict__[hook_name](self)
+                break
 
-        register = ClassRegister(getattr(self.manager.hook, hook_name), "PLUGIN_NAME", self.third_party_plugins)
+        register = ClassRegister(partial(self.manager.call_hook, hook_name), "PLUGIN_NAME", self.third_party_plugins)
         setattr(self, name, register)
         return register
 
@@ -102,12 +142,18 @@ class ClassRegister:
 
 
 class ThirdPartyPlugins:
-    def __init__(self, manager: pluggy.PluginManager) -> None:
+    def __init__(self, manager: HookRegistry) -> None:
         self.manager = manager
         self.loaded = False
 
     def load(self) -> None:
-        self.manager.load_setuptools_entrypoints("hatch")
+        for ep in importlib.metadata.entry_points(group="hatch"):
+            plugin = ep.load()
+            name = getattr(plugin, "__name__", "")
+            if callable(plugin) and name.startswith("hatch_register_"):
+                self.manager.register_hook(name, plugin)
+            else:
+                self.manager.register(plugin)
         self.loaded = True
 
 

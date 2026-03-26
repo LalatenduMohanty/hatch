@@ -5,10 +5,6 @@ class PluginManager(_PluginManager):
     def initialize(self):
         super().initialize()
 
-        from hatch.plugin import specs
-
-        self.manager.add_hookspecs(specs)
-
     def hatch_register_environment(self):
         from hatch.env.plugin import hooks
 

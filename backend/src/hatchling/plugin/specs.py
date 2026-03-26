@@ -1,6 +1,9 @@
-import pluggy
+def hookspec(func):
+    """Marker decorator for hatch plugin hook specifications.
 
-hookspec = pluggy.HookspecMarker("hatch")
+    This is a no-op decorator maintained for backward compatibility.
+    """
+    return func
 
 
 @hookspec
@@ -21,3 +24,8 @@ def hatch_register_build_hook() -> None:
 @hookspec
 def hatch_register_metadata_hook() -> None:
     """Register new classes that adhere to the metadata hook interface."""
+
+
+@hookspec
+def hatch_register_version_scheme() -> None:
+    """Register new classes that adhere to the version scheme interface."""
